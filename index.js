@@ -13,11 +13,13 @@ const JOGOS_PARA_FARMAR = (process.env.FARM_GAME_IDS || '730')
     .map((id) => Number(id.trim()))
     .filter((id) => Number.isInteger(id) && id > 0);
 const RETRY_MS = Number(process.env.RETRY_MS || 30000);
+const MAX_RETRY_MS = Number(process.env.MAX_RETRY_MS || 900000);
 
 let logando = false;
 let conectado = false;
 let farmPausado = false;
 let retryTimeout = null;
+let tentativasConsecutivas = 0;
 
 if (JOGOS_PARA_FARMAR.length === 0) {
     console.error('ERRO: FARM_GAME_IDS está vazio ou inválido. Exemplo: FARM_GAME_IDS=730,570');
@@ -51,6 +53,16 @@ async function carregarCredenciais() {
         sharedSecret = await perguntar('Steam shared secret: ');
     }
 
+    while (sharedSecret) {
+        try {
+            SteamTotp.generateAuthCode(sharedSecret);
+            break;
+        } catch (_err) {
+            console.error('Shared secret invalido. Copie o valor completo (base64) sem espacos extras.');
+            sharedSecret = await perguntar('Steam shared secret: ');
+        }
+    }
+
     if (!username || !password || !sharedSecret) {
         console.error('ERRO: usuário, senha e shared secret são obrigatórios.');
         process.exit(1);
@@ -73,16 +85,31 @@ function tentarLogin() {
     client.logOn(logOnOptions);
 }
 
-function agendarRelogin(motivo) {
+function agendarRelogin(motivo, atrasoMs = RETRY_MS) {
     if (retryTimeout) {
         return;
     }
 
-    console.log(`${motivo} Nova tentativa em ${Math.round(RETRY_MS / 1000)}s...`);
+    const atrasoRealMs = Math.min(Math.max(atrasoMs, RETRY_MS), MAX_RETRY_MS);
+    console.log(`${motivo} Nova tentativa em ${Math.round(atrasoRealMs / 1000)}s...`);
     retryTimeout = setTimeout(() => {
         retryTimeout = null;
         tentarLogin();
-    }, RETRY_MS);
+    }, atrasoRealMs);
+}
+
+function calcularAtrasoErro(err) {
+    const message = String(err?.message || '');
+
+    if (message.includes('RateLimitExceeded')) {
+        tentativasConsecutivas += 1;
+        const base = RETRY_MS * Math.pow(2, Math.min(tentativasConsecutivas, 6));
+        const jitter = Math.floor(Math.random() * 5000);
+        return Math.min(base + jitter, MAX_RETRY_MS);
+    }
+
+    tentativasConsecutivas = 0;
+    return RETRY_MS;
 }
 
 function iniciarFarm() {
@@ -127,6 +154,7 @@ iniciarBot().catch((err) => {
 client.on('loggedOn', () => {
     logando = false;
     conectado = true;
+    tentativasConsecutivas = 0;
     console.log('Conectado com sucesso na Steam via Autenticador Celular!');
     client.setPersona(SteamUser.EPersonaState.Online); 
     iniciarFarm();
@@ -143,14 +171,15 @@ client.on('error', (err) => {
     logando = false;
     conectado = false;
     console.error('Erro encontrado no bot:', err.message);
-    agendarRelogin('Falha na conexão/login.');
+    const atraso = calcularAtrasoErro(err);
+    agendarRelogin('Falha na conexão/login.', atraso);
 });
 
 client.on('disconnected', (eresult, msg) => {
     logando = false;
     conectado = false;
     console.warn(`Desconectado da Steam (EResult ${eresult}): ${msg || 'sem mensagem'}`);
-    agendarRelogin('Conexão encerrada.');
+    agendarRelogin('Conexão encerrada.', RETRY_MS);
 });
 
 client.on('playingState', (blocked, playingApp) => {
