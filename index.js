@@ -1,10 +1,11 @@
 const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp'); 
+const readline = require('readline');
 const client = new SteamUser();
 
-const username = process.env.STEAM_USERNAME;
-const password = process.env.STEAM_PASSWORD;
-const sharedSecret = process.env.STEAM_SHARED_SECRET;
+let username = process.env.STEAM_USERNAME;
+let password = process.env.STEAM_PASSWORD;
+let sharedSecret = process.env.STEAM_SHARED_SECRET;
 
 const CS2_APP_ID = 730;
 const JOGOS_PARA_FARMAR = (process.env.FARM_GAME_IDS || '730')
@@ -18,14 +19,42 @@ let conectado = false;
 let farmPausado = false;
 let retryTimeout = null;
 
-if (!username || !password || !sharedSecret) {
-    console.error('ERRO: Configure STEAM_USERNAME, STEAM_PASSWORD e STEAM_SHARED_SECRET no ambiente da sua máquina hospedada.');
-    process.exit(1);
-}
-
 if (JOGOS_PARA_FARMAR.length === 0) {
     console.error('ERRO: FARM_GAME_IDS está vazio ou inválido. Exemplo: FARM_GAME_IDS=730,570');
     process.exit(1);
+}
+
+function perguntar(pergunta) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+        rl.question(pergunta, (resposta) => {
+            rl.close();
+            resolve((resposta || '').trim());
+        });
+    });
+}
+
+async function carregarCredenciais() {
+    if (!username) {
+        username = await perguntar('Steam username: ');
+    }
+
+    if (!password) {
+        password = await perguntar('Steam password: ');
+    }
+
+    if (!sharedSecret) {
+        sharedSecret = await perguntar('Steam shared secret: ');
+    }
+
+    if (!username || !password || !sharedSecret) {
+        console.error('ERRO: usuário, senha e shared secret são obrigatórios.');
+        process.exit(1);
+    }
 }
 
 // Função para tentar o login gerando o código de 2 fatores atualizado
@@ -85,7 +114,15 @@ function retomarFarm() {
     iniciarFarm();
 }
 
-tentarLogin();
+async function iniciarBot() {
+    await carregarCredenciais();
+    tentarLogin();
+}
+
+iniciarBot().catch((err) => {
+    console.error('Falha ao iniciar o bot:', err.message);
+    process.exit(1);
+});
 
 client.on('loggedOn', () => {
     logando = false;
