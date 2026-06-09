@@ -14,12 +14,15 @@ const JOGOS_PARA_FARMAR = (process.env.FARM_GAME_IDS || '730')
     .filter((id) => Number.isInteger(id) && id > 0);
 const RETRY_MS = Number(process.env.RETRY_MS || 30000);
 const MAX_RETRY_MS = Number(process.env.MAX_RETRY_MS || 900000);
+const RATE_LIMIT_BASE_MS = Number(process.env.RATE_LIMIT_BASE_MS || 300000);
+const MAX_RATE_LIMIT_RETRIES = Number(process.env.MAX_RATE_LIMIT_RETRIES || 6);
 
 let logando = false;
 let conectado = false;
 let farmPausado = false;
 let retryTimeout = null;
 let tentativasConsecutivas = 0;
+let rateLimitConsecutivo = 0;
 
 if (JOGOS_PARA_FARMAR.length === 0) {
     console.error('ERRO: FARM_GAME_IDS está vazio ou inválido. Exemplo: FARM_GAME_IDS=730,570');
@@ -40,6 +43,23 @@ function perguntar(pergunta) {
     });
 }
 
+function sharedSecretPareceValido(secret) {
+    if (!secret || secret.length < 16) {
+        return false;
+    }
+
+    if (!/^[A-Za-z0-9+/=]+$/.test(secret)) {
+        return false;
+    }
+
+    const decoded = Buffer.from(secret, 'base64');
+    if (!decoded || decoded.length < 10) {
+        return false;
+    }
+
+    return true;
+}
+
 async function carregarCredenciais() {
     if (!username) {
         username = await perguntar('Steam username: ');
@@ -54,6 +74,12 @@ async function carregarCredenciais() {
     }
 
     while (sharedSecret) {
+        if (!sharedSecretPareceValido(sharedSecret)) {
+            console.error('Shared secret invalido: valor muito curto ou formato incorreto (base64).');
+            sharedSecret = await perguntar('Steam shared secret: ');
+            continue;
+        }
+
         try {
             SteamTotp.generateAuthCode(sharedSecret);
             break;
@@ -102,13 +128,15 @@ function calcularAtrasoErro(err) {
     const message = String(err?.message || '');
 
     if (message.includes('RateLimitExceeded')) {
+        rateLimitConsecutivo += 1;
         tentativasConsecutivas += 1;
-        const base = RETRY_MS * Math.pow(2, Math.min(tentativasConsecutivas, 6));
+        const base = RATE_LIMIT_BASE_MS * Math.pow(2, Math.min(tentativasConsecutivas, 4));
         const jitter = Math.floor(Math.random() * 5000);
         return Math.min(base + jitter, MAX_RETRY_MS);
     }
 
     tentativasConsecutivas = 0;
+    rateLimitConsecutivo = 0;
     return RETRY_MS;
 }
 
@@ -155,6 +183,7 @@ client.on('loggedOn', () => {
     logando = false;
     conectado = true;
     tentativasConsecutivas = 0;
+    rateLimitConsecutivo = 0;
     console.log('Conectado com sucesso na Steam via Autenticador Celular!');
     client.setPersona(SteamUser.EPersonaState.Online); 
     iniciarFarm();
@@ -171,6 +200,13 @@ client.on('error', (err) => {
     logando = false;
     conectado = false;
     console.error('Erro encontrado no bot:', err.message);
+
+    if (String(err?.message || '').includes('RateLimitExceeded') && rateLimitConsecutivo >= MAX_RATE_LIMIT_RETRIES) {
+        console.error('Muitas tentativas bloqueadas pela Steam. Encerrando para evitar loop infinito.');
+        console.error('Revise usuario/senha/shared secret e aguarde um tempo antes de tentar novamente.');
+        process.exit(1);
+    }
+
     const atraso = calcularAtrasoErro(err);
     agendarRelogin('Falha na conexão/login.', atraso);
 });
