@@ -6,6 +6,7 @@ const client = new SteamUser();
 let username = process.env.STEAM_USERNAME;
 let password = process.env.STEAM_PASSWORD;
 let sharedSecret = process.env.STEAM_SHARED_SECRET;
+let modo2FA = 'auto';
 
 const CS2_APP_ID = 730;
 const JOGOS_PARA_FARMAR = (process.env.FARM_GAME_IDS || '730')
@@ -70,7 +71,7 @@ async function carregarCredenciais() {
     }
 
     if (!sharedSecret) {
-        sharedSecret = await perguntar('Steam shared secret: ');
+        sharedSecret = await perguntar('Steam shared secret (Enter para modo manual): ');
     }
 
     while (sharedSecret) {
@@ -89,8 +90,14 @@ async function carregarCredenciais() {
         }
     }
 
-    if (!username || !password || !sharedSecret) {
-        console.error('ERRO: usuário, senha e shared secret são obrigatórios.');
+    if (!sharedSecret) {
+        modo2FA = 'manual';
+        console.warn('Modo manual ativado: o codigo Steam Guard sera solicitado quando necessario.');
+        console.warn('Para rodar 24h sem intervencao, use um shared secret valido.');
+    }
+
+    if (!username || !password) {
+        console.error('ERRO: usuário e senha são obrigatórios.');
         process.exit(1);
     }
 }
@@ -105,9 +112,13 @@ function tentarLogin() {
     console.log("Gerando código Steam Guard automático...");
     const logOnOptions = {
         accountName: username,
-        password: password,
-        twoFactorCode: SteamTotp.generateAuthCode(sharedSecret)
+        password: password
     };
+
+    if (modo2FA === 'auto') {
+        logOnOptions.twoFactorCode = SteamTotp.generateAuthCode(sharedSecret);
+    }
+
     client.logOn(logOnOptions);
 }
 
@@ -190,10 +201,17 @@ client.on('loggedOn', () => {
 });
 
 // Se a Steam pedir o código novamente por expiração, geramos outro na hora
-client.on('steamGuard', (domain, callback) => {
+client.on('steamGuard', async (domain, callback) => {
     console.log('Steam pediu revalidação do Steam Guard.');
-    const autoCode = SteamTotp.generateAuthCode(sharedSecret);
-    callback(autoCode);
+
+    if (modo2FA === 'auto') {
+        const autoCode = SteamTotp.generateAuthCode(sharedSecret);
+        callback(autoCode);
+        return;
+    }
+
+    const manualCode = await perguntar('Codigo Steam Guard (5 chars): ');
+    callback(manualCode);
 });
 
 client.on('error', (err) => {
