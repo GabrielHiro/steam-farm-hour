@@ -7,6 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const community = new SteamCommunity();
 const SENTRY_FILE = path.resolve(process.cwd(), 'sentry.bin');
+const isInteractive = Boolean(process.stdin && process.stdin.isTTY);
+const setupMode = process.argv.includes('--setup') || process.argv.includes('--init');
+let setupPending = false;
 
 let username = process.env.STEAM_USERNAME;
 let password = process.env.STEAM_PASSWORD;
@@ -169,10 +172,33 @@ client.on('sentry', (sentry) => {
     try {
         fs.writeFileSync(SENTRY_FILE, sentry);
         console.log(`Sentry salvo em ${SENTRY_FILE}`);
+        try {
+            if (process.platform !== 'win32') fs.chmodSync(SENTRY_FILE, 0o600);
+        } catch (e) {
+            // ignore chmod failures
+        }
+        if (setupMode) {
+            console.log('Setup concluido: sentry salvo. Saindo.');
+            process.exit(0);
+        }
     } catch (e) {
         console.warn('Falha ao salvar sentry:', e.message);
     }
 });
+
+// If running under non-interactive environment (pm2) and no credentials/sentry, print instructions and exit
+if (!isInteractive && !setupMode) {
+    const hasSentry = fs.existsSync(SENTRY_FILE);
+    if (!sharedSecret && !hasSentry) {
+        console.error('Ambiente sem terminal interativo detectado (possivelmente PM2).');
+        console.error('Não existe `shared_secret` configurado nem `sentry.bin` salvo.');
+        console.error('Execute uma vez interativamente para gerar o sentry:');
+        console.error('  node index.js --setup');
+        console.error('Após autenticar interativamente e ver "Sentry salvo" você poderá rodar com PM2:');
+        console.error('  pm2 start index.js --name cs2-farm');
+        process.exit(1);
+    }
+}
 
 // Quando obtivermos sessão web, damos os cookies para SteamCommunity para confirmar automaticamente
 client.on('webSession', (sessionID, cookies) => {
@@ -332,3 +358,16 @@ process.on('SIGINT', () => {
         process.exit(0);
     }
 });
+
+// If started with --setup, exit shortly after loggedOn if sentry wasn't emitted
+if (setupMode) {
+    setupPending = true;
+    client.once('loggedOn', () => {
+        setTimeout(() => {
+            if (setupPending) {
+                console.log('Setup finalizado (sem sentry explicitamente recebido). Saindo.');
+                process.exit(0);
+            }
+        }, 3000);
+    });
+}
