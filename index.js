@@ -6,6 +6,7 @@ const SteamCommunity = require('steamcommunity');
 const fs = require('fs');
 const path = require('path');
 const community = new SteamCommunity();
+const SENTRY_FILE = path.resolve(process.cwd(), 'sentry.bin');
 
 let username = process.env.STEAM_USERNAME;
 let password = process.env.STEAM_PASSWORD;
@@ -147,8 +148,31 @@ function tentarLogin() {
         logOnOptions.twoFactorCode = SteamTotp.generateAuthCode(sharedSecret);
     }
 
+    // If we have a sentry file from a previous interactive login, reuse it so Steam won't ask for Guard again
+    try {
+        if (fs.existsSync(SENTRY_FILE)) {
+            const sentry = fs.readFileSync(SENTRY_FILE);
+            if (sentry && sentry.length) {
+                logOnOptions.sentry = sentry;
+                console.log('Usando sentry salvo para evitar Steam Guard (modo headless).');
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+
     client.logOn(logOnOptions);
 }
+
+// Save sentry blob to disk so future headless restarts don't require Steam Guard input
+client.on('sentry', (sentry) => {
+    try {
+        fs.writeFileSync(SENTRY_FILE, sentry);
+        console.log(`Sentry salvo em ${SENTRY_FILE}`);
+    } catch (e) {
+        console.warn('Falha ao salvar sentry:', e.message);
+    }
+});
 
 // Quando obtivermos sessão web, damos os cookies para SteamCommunity para confirmar automaticamente
 client.on('webSession', (sessionID, cookies) => {
