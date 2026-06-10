@@ -2,11 +2,34 @@ const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp'); 
 const readline = require('readline');
 const client = new SteamUser();
+const SteamCommunity = require('steamcommunity');
+const fs = require('fs');
+const path = require('path');
+const community = new SteamCommunity();
 
 let username = process.env.STEAM_USERNAME;
 let password = process.env.STEAM_PASSWORD;
 let sharedSecret = process.env.STEAM_SHARED_SECRET;
 let modo2FA = 'auto';
+let identitySecret = process.env.STEAM_IDENTITY_SECRET;
+let autoConfirm = process.env.AUTO_CONFIRM === 'true';
+const CONFIG_FILE = path.resolve(process.cwd(), 'config.json');
+
+// Load config file if exists
+if (fs.existsSync(CONFIG_FILE)) {
+    try {
+        const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        username = username || cfg.username;
+        password = password || cfg.password;
+        sharedSecret = sharedSecret || cfg.shared_secret;
+        identitySecret = identitySecret || cfg.identity_secret;
+        autoConfirm = typeof cfg.auto_confirm === 'boolean' ? cfg.auto_confirm : autoConfirm;
+        process.env.FARM_GAME_IDS = process.env.FARM_GAME_IDS || cfg.farm_game_ids;
+        process.env.RETRY_MS = process.env.RETRY_MS || cfg.retry_ms;
+    } catch (e) {
+        console.warn('Falha ao ler config.json:', e.message);
+    }
+}
 
 const CS2_APP_ID = 730;
 const JOGOS_PARA_FARMAR = (process.env.FARM_GAME_IDS || '730')
@@ -96,6 +119,11 @@ async function carregarCredenciais() {
         console.warn('Para rodar 24h sem intervencao, use um shared secret valido.');
     }
 
+    // if identity secret supplied in config or env, enable autoConfirm by default
+    if (identitySecret && !process.env.AUTO_CONFIRM) {
+        autoConfirm = true;
+    }
+
     if (!username || !password) {
         console.error('ERRO: usuário e senha são obrigatórios.');
         process.exit(1);
@@ -121,6 +149,26 @@ function tentarLogin() {
 
     client.logOn(logOnOptions);
 }
+
+// Quando obtivermos sessão web, damos os cookies para SteamCommunity para confirmar automaticamente
+client.on('webSession', (sessionID, cookies) => {
+    try {
+        community.setCookies(cookies);
+        console.log('Cookies de sessao web configurados para SteamCommunity.');
+
+        if (autoConfirm && identitySecret) {
+            console.log('Auto-confirm ativado. Iniciando verificador de confirmacoes...');
+            // intervalo em ms: checar a cada 20s
+            try {
+                community.startConfirmationChecker(20 * 1000, identitySecret);
+            } catch (e) {
+                console.warn('Falha ao iniciar confirmation checker:', e.message);
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao setar cookies no SteamCommunity:', e.message);
+    }
+});
 
 function agendarRelogin(motivo, atrasoMs = RETRY_MS) {
     if (retryTimeout) {

@@ -1,0 +1,9 @@
+{
+  "username": "",
+  "password": "",
+  "shared_secret": "",
+  "identity_secret": "",
+  "farm_game_ids": "730",
+  "auto_confirm": false,
+  "retry_ms": 30000
+}
