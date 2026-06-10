@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const community = new SteamCommunity();
 const SENTRY_FILE = path.resolve(process.cwd(), 'sentry.bin');
+const COOKIE_FILE = path.resolve(process.cwd(), 'cookies.json');
 const isInteractive = Boolean(process.stdin && process.stdin.isTTY);
 const setupMode = process.argv.includes('--setup') || process.argv.includes('--init');
 let setupPending = false;
@@ -32,6 +33,24 @@ if (fs.existsSync(CONFIG_FILE)) {
         process.env.RETRY_MS = process.env.RETRY_MS || cfg.retry_ms;
     } catch (e) {
         console.warn('Falha ao ler config.json:', e.message);
+    }
+}
+
+// If cookies file exists from a previous run, load it into SteamCommunity so confirmations can run headless
+if (fs.existsSync(COOKIE_FILE)) {
+    try {
+        const raw = fs.readFileSync(COOKIE_FILE, 'utf8');
+        const savedCookies = JSON.parse(raw);
+        if (Array.isArray(savedCookies) && savedCookies.length) {
+            try {
+                community.setCookies(savedCookies);
+                console.log('Cookies carregados de cookies.json para SteamCommunity.');
+            } catch (e) {
+                console.warn('Falha ao setar cookies carregados:', e.message);
+            }
+        }
+    } catch (e) {
+        // ignore
     }
 }
 
@@ -189,14 +208,18 @@ client.on('sentry', (sentry) => {
 // If running under non-interactive environment (pm2) and no credentials/sentry, print instructions and exit
 if (!isInteractive && !setupMode) {
     const hasSentry = fs.existsSync(SENTRY_FILE);
-    if (!sharedSecret && !hasSentry) {
+    const hasCookies = fs.existsSync(COOKIE_FILE);
+    if (!sharedSecret && !hasSentry && !hasCookies) {
         console.error('Ambiente sem terminal interativo detectado (possivelmente PM2).');
-        console.error('Não existe `shared_secret` configurado nem `sentry.bin` salvo.');
-        console.error('Execute uma vez interativamente para gerar o sentry:');
+        console.error('Não existe `shared_secret`, `sentry.bin` ou `cookies.json` salvo.');
+        console.error('Execute uma vez interativamente para gerar os dados necessários:');
         console.error('  node index.js --setup');
-        console.error('Após autenticar interativamente e ver "Sentry salvo" você poderá rodar com PM2:');
+        console.error('Durante o setup, digite o código Steam Guard quando solicitado.');
+        console.error('Após autenticar interativamente e ver "Sentry salvo" ou "Cookies salvos" você poderá rodar com PM2:');
         console.error('  pm2 start index.js --name cs2-farm');
         process.exit(1);
+    } else if (!sharedSecret && !hasSentry && hasCookies) {
+        console.log('Ambiente sem terminal interativo: cookies de sessao encontrados, o bot tentara usar cookies para confirmacoes.');
     }
 }
 
@@ -205,6 +228,15 @@ client.on('webSession', (sessionID, cookies) => {
     try {
         community.setCookies(cookies);
         console.log('Cookies de sessao web configurados para SteamCommunity.');
+
+        // persist cookies to disk so headless runs can reuse them
+        try {
+            fs.writeFileSync(COOKIE_FILE, JSON.stringify(cookies, null, 2));
+            if (process.platform !== 'win32') fs.chmodSync(COOKIE_FILE, 0o600);
+            console.log(`Cookies salvos em ${COOKIE_FILE}`);
+        } catch (e) {
+            console.warn('Falha ao salvar cookies:', e.message);
+        }
 
         if (autoConfirm && identitySecret) {
             console.log('Auto-confirm ativado. Iniciando verificador de confirmacoes...');
