@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steam Farm Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- ── Login Page ──────────────────────────────────────── -->
+<div id="login-page" class="hidden fixed inset-0 bg-gray-950 flex items-center justify-center z-50">
+  <div class="bg-gray-900 rounded-2xl p-8 w-full max-w-sm mx-4 shadow-2xl">
+    <div class="text-center mb-6">
+      <div class="text-4xl mb-2">🎮</div>
+      <h1 class="text-xl font-bold">Steam Farm Manager</h1>
+    </div>
+    <div class="space-y-3">
+      <input id="login-user" type="text" placeholder="Usuário" autocomplete="username"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+      <input id="login-pass" type="password" placeholder="Senha" autocomplete="current-password"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button onclick="doLogin()" class="w-full mt-4 bg-blue-600 hover:bg-blue-500 py-3 rounded-lg text-sm font-semibold transition-colors">
+      Entrar
+    </button>
+    <p id="login-error" class="text-red-400 text-xs text-center mt-3 hidden">Usuário ou senha incorretos</p>
+  </div>
+</div>
+
+<!-- ── Main App ────────────────────────────────────────── -->
+<div id="app" class="hidden max-w-5xl mx-auto p-6">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">🎮</span>
+      <div>
+        <h1 class="text-xl font-bold leading-tight">Steam Farm Manager</h1>
+        <p id="user-info" class="text-xs text-gray-500"></p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="ws-badge" class="text-xs px-2.5 py-1 rounded-full bg-red-900/60 text-red-300 flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span>Offline
+      </span>
+      <button onclick="logout()" class="text-xs text-gray-500 hover:text-red-400 px-2 py-1 rounded transition-colors">Sair</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 mb-6 border-b border-gray-800 pb-0">
+    <button id="tab-accounts" onclick="showTab('accounts')"
+      class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-blue-500 text-blue-400">
+      Contas
+    </button>
+    <button id="tab-users" onclick="showTab('users')"
+      class="tab-btn px-4 py-2 text-sm text-gray-500 hover:text-gray-300 rounded-t-lg border-b-2 border-transparent admin-only hidden">
+      Usuários
+    </button>
+  </div>
+
+  <!-- Accounts Tab -->
+  <div id="panel-accounts">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm text-gray-500" id="accounts-summary"></p>
+      <button onclick="openAddModal()"
+        class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+        + Adicionar Conta
+      </button>
+    </div>
+    <div id="loading-state" class="text-center py-16 text-gray-600"><p>Carregando...</p></div>
+    <div id="empty-state" class="hidden text-center py-16 text-gray-600">
+      <div class="text-5xl mb-3">🎮</div>
+      <p class="text-gray-500">Nenhuma conta cadastrada</p>
+    </div>
+    <div id="accounts-list" class="space-y-3"></div>
+  </div>
+
+  <!-- Users Tab (admin only) -->
+  <div id="panel-users" class="hidden">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm text-gray-500">Gerenciar usuários do painel</p>
+      <button onclick="openAddUserModal()"
+        class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+        + Novo Usuário
+      </button>
+    </div>
+    <div id="users-list" class="space-y-2"></div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Account Modal ──────────────────────────── -->
+<div id="account-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-screen overflow-y-auto">
+    <h2 id="modal-title" class="text-lg font-semibold mb-5">Adicionar Conta</h2>
+    <form id="account-form" class="space-y-4">
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Nome / Label</label>
+        <input id="f-label" type="text" placeholder="Ex: Cliente João - CS2"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500" required>
+      </div>
+      <div id="f-owner-wrap" class="hidden">
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Proprietário</label>
+        <select id="f-owner-id" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="">Sem dono (admin)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Método de Login</label>
+        <select id="f-login-method" onchange="updateLoginFields()"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="credentials">Usuário + Senha (+ 2FA automático)</option>
+          <option value="qr">QR Code (escanear com app Steam)</option>
+        </select>
+      </div>
+      <div id="credential-fields" class="space-y-3">
+        <div>
+          <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Usuário Steam</label>
+          <input id="f-username" type="text" placeholder="steam_login"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Senha</label>
+          <input id="f-password" type="password" placeholder="••••••••"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">
+            Shared Secret <span class="text-gray-600 normal-case font-normal">(2FA automático)</span>
+          </label>
+          <input id="f-shared-secret" type="text" placeholder="Base64..."
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">
+            Identity Secret <span class="text-gray-600 normal-case font-normal">(confirmação automática de trocas)</span>
+          </label>
+          <input id="f-identity-secret" type="text" placeholder="Base64... (opcional)"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-blue-500">
+        </div>
+      </div>
+      <div id="qr-info" class="hidden bg-blue-950/60 border border-blue-800/40 rounded-lg p-3 text-sm text-blue-300">
+        QR Code aparece ao iniciar a conta. Após o 1º scan, o token é salvo e futuras reinicializações são automáticas.
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">
+          Jogos para farmar <span class="text-gray-600 normal-case font-normal">(IDs separados por vírgula)</span>
+        </label>
+        <input id="f-farm-games" type="text" value="730"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-blue-500">
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="f-auto-confirm" class="rounded">
+        <label for="f-auto-confirm" class="text-sm text-gray-300 cursor-pointer select-none">
+          Confirmar trocas automaticamente (requer identity secret)
+        </label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="f-enabled" class="rounded">
+        <label for="f-enabled" class="text-sm text-gray-300 cursor-pointer select-none">
+          Iniciar automaticamente quando o servidor reiniciar
+        </label>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+          Salvar
+        </button>
+        <button type="button" onclick="closeModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-lg text-sm transition-colors">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── QR Code Modal ───────────────────────────────────── -->
+<div id="qr-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-xs shadow-2xl text-center">
+    <h2 class="text-lg font-semibold mb-1">Escanear QR Code</h2>
+    <p class="text-sm text-gray-400 mb-5">
+      Abra o <strong class="text-white">app Steam</strong> → <span class="text-blue-400">Entrar por QR Code</span>
+    </p>
+    <div class="flex justify-center mb-4">
+      <div id="qr-canvas" class="bg-white p-3 rounded-xl inline-block min-w-[160px] min-h-[160px] flex items-center justify-center"></div>
+    </div>
+    <p id="qr-hint" class="text-xs text-gray-500 mb-4 animate-pulse">Aguardando scan...</p>
+    <button onclick="closeQrModal()" class="w-full bg-gray-800 hover:bg-gray-700 py-2 rounded-lg text-sm transition-colors">
+      Fechar
+    </button>
+  </div>
+</div>
+
+<!-- ── 2FA Modal ──────────────────────────────────────── -->
+<div id="twofa-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+    <h2 class="text-lg font-semibold mb-1">Steam Guard</h2>
+    <p class="text-sm text-gray-400 mb-4">
+      Conta <strong id="twofa-label" class="text-white"></strong> precisa de um código.
+    </p>
+    <input id="twofa-code" type="text" maxlength="5" placeholder="XXXXX" autocomplete="off"
+      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-center text-2xl font-mono tracking-widest mb-4 focus:outline-none focus:border-blue-500 uppercase"
+      oninput="this.value=this.value.toUpperCase()"
+      onkeydown="if(event.key==='Enter')submit2FA()">
+    <div class="flex gap-3">
+      <button onclick="submit2FA()" class="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg text-sm font-semibold transition-colors">Confirmar</button>
+      <button onclick="closeTwoFAModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-lg text-sm transition-colors">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Logs Modal ─────────────────────────────────────── -->
+<div id="logs-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl shadow-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Logs — <span id="logs-account-label" class="text-gray-400 font-normal text-base"></span></h2>
+      <button onclick="closeLogsModal()" class="text-gray-500 hover:text-white transition-colors text-xl leading-none">✕</button>
+    </div>
+    <div id="logs-content" class="bg-gray-950 rounded-lg p-4 h-80 overflow-y-auto font-mono text-xs text-gray-300 space-y-0.5 scroll-smooth">
+      <p class="text-gray-600">Sem logs recentes.</p>
+    </div>
+    <button onclick="refreshLogs()" class="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors">↻ Atualizar</button>
+  </div>
+</div>
+
+<!-- ── Add/Edit User Modal ────────────────────────────── -->
+<div id="user-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <h2 id="user-modal-title" class="text-lg font-semibold mb-5">Novo Usuário</h2>
+    <form id="user-form" class="space-y-4">
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Usuário</label>
+        <input id="uf-username" type="text" placeholder="nome_de_login"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500" required>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">
+          Senha <span id="uf-pass-hint" class="text-gray-600 normal-case font-normal">(obrigatória)</span>
+        </label>
+        <input id="uf-password" type="password" placeholder="••••••••"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wide block mb-1.5">Perfil</label>
+        <select id="uf-role" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="user">Usuário (gerencia as próprias contas)</option>
+          <option value="admin">Admin (acesso total)</option>
+        </select>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg text-sm font-semibold transition-colors">Salvar</button>
+        <button type="button" onclick="closeUserModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 py-2.5 rounded-lg text-sm transition-colors">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────
+
+let TOKEN = localStorage.getItem('sfm_token');
+let ME = null;
+let accounts = [];
+let users = [];
+let editingAccountId = null;
+let editingUserId = null;
+let twoFAAccountId = null;
+let logsAccountId = null;
+let ws = null;
+
+const STATE_COLOR = {
+  stopped:     'bg-gray-800 text-gray-400',
+  starting:    'bg-yellow-900/60 text-yellow-300',
+  connecting:  'bg-yellow-900/60 text-yellow-300',
+  connected:   'bg-blue-900/60 text-blue-300',
+  farming:     'bg-green-900/60 text-green-300',
+  paused:      'bg-orange-900/60 text-orange-300',
+  error:       'bg-red-900/60 text-red-300',
+  disconnected:'bg-red-950/60 text-red-400',
+  waiting_qr:  'bg-purple-900/60 text-purple-300',
+  needs_2fa:   'bg-amber-900/60 text-amber-300',
+};
+const STATE_LABEL = {
+  stopped:'Parado', starting:'Iniciando...', connecting:'Conectando...',
+  connected:'Conectado', farming:'● Farmando', paused:'⏸ Pausado',
+  error:'✕ Erro', disconnected:'Desconectado', waiting_qr:'⬜ QR Code', needs_2fa:'🔒 2FA',
+};
+const RUNNING = new Set(['starting','connecting','connected','farming','paused','waiting_qr','needs_2fa']);
+const isRunning = s => RUNNING.has(s);
+
+// ── Boot ─────────────────────────────────────────────────
+
+if (TOKEN) {
+  initApp();
+} else {
+  showLoginPage();
+}
+
+function showLoginPage() {
+  document.getElementById('login-page').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  document.getElementById('login-error').classList.add('hidden');
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) throw new Error('invalid');
+    const data = await res.json();
+    TOKEN = data.token;
+    localStorage.setItem('sfm_token', TOKEN);
+    ME = { username: data.username, role: data.role };
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    setupApp();
+  } catch (e) {
+    document.getElementById('login-error').classList.remove('hidden');
+  }
+}
+
+async function initApp() {
+  try {
+    // Validate token by loading accounts
+    const res = await fetch('/api/accounts', { headers: authHeader() });
+    if (res.status === 401) { logout(); return; }
+    // Decode role from JWT (payload is base64)
+    const payload = JSON.parse(atob(TOKEN.split('.')[1]));
+    ME = { username: payload.username, role: payload.role };
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    setupApp();
+  } catch (e) {
+    logout();
+  }
+}
+
+function setupApp() {
+  document.getElementById('user-info').textContent = `${ME.username} · ${ME.role}`;
+  if (ME.role === 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  }
+  loadAccounts();
+  if (ME.role === 'admin') loadUsers();
+  connectWS();
+}
+
+function logout() {
+  localStorage.removeItem('sfm_token');
+  TOKEN = null; ME = null;
+  showLoginPage();
+}
+
+// ── WebSocket ────────────────────────────────────────────
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws?token=${encodeURIComponent(TOKEN)}`);
+  ws.onopen = () => setBadge(true);
+  ws.onclose = () => { setBadge(false); setTimeout(connectWS, 3000); };
+  ws.onmessage = (e) => handleWS(JSON.parse(e.data));
+}
+
+function setBadge(on) {
+  const el = document.getElementById('ws-badge');
+  el.className = on
+    ? 'text-xs px-2.5 py-1 rounded-full bg-green-900/60 text-green-300 flex items-center gap-1.5'
+    : 'text-xs px-2.5 py-1 rounded-full bg-red-900/60 text-red-300 flex items-center gap-1.5';
+  el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${on?'bg-green-400':'bg-red-400'} inline-block"></span>${on?'Online':'Offline'}`;
+}
+
+function handleWS(msg) {
+  if (msg.type === 'hello') {
+    for (const [id, st] of Object.entries(msg.statuses || {})) patchStatus(Number(id), st);
+    return;
+  }
+  if (msg.type === 'status') {
+    patchStatus(msg.accountId, msg.data);
+    if (msg.data.state === 'needs_2fa') {
+      const acc = accounts.find(a => a.id === msg.accountId);
+      openTwoFAModal(msg.accountId, acc?.label);
+    }
+    if (['farming','connected'].includes(msg.data.state)) closeQrModal();
+  }
+  if (msg.type === 'qrCode') showQR(msg.accountId, msg.data.url);
+  if (msg.type === 'log' && logsAccountId === msg.accountId) {
+    appendLog(msg.data);
+  }
+}
+
+function patchStatus(id, status) {
+  const acc = accounts.find(a => a.id === id);
+  if (acc) acc.status = status;
+  updateCard(id, status);
+}
+
+// ── Tabs ─────────────────────────────────────────────────
+
+function showTab(tab) {
+  ['accounts','users'].forEach(t => {
+    document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+    const btn = document.getElementById(`tab-${t}`);
+    if (t === tab) {
+      btn.className = 'tab-btn px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-blue-500 text-blue-400';
+    } else {
+      btn.className = 'tab-btn px-4 py-2 text-sm text-gray-500 hover:text-gray-300 rounded-t-lg border-b-2 border-transparent admin-only' + (ME?.role === 'admin' ? '' : ' hidden');
+    }
+  });
+}
+
+// ── Accounts ─────────────────────────────────────────────
+
+async function loadAccounts() {
+  try {
+    accounts = await api('GET', '/api/accounts');
+    renderAccounts();
+  } catch (e) {
+    document.getElementById('loading-state').innerHTML = '<p class="text-red-400">Erro ao carregar contas</p>';
+  }
+}
+
+function renderAccounts() {
+  const list = document.getElementById('accounts-list');
+  document.getElementById('loading-state').classList.add('hidden');
+  const total = accounts.length;
+  const running = accounts.filter(a => isRunning(a.status?.state)).length;
+  document.getElementById('accounts-summary').textContent = total > 0 ? `${total} contas · ${running} rodando` : '';
+  if (total === 0) { document.getElementById('empty-state').classList.remove('hidden'); list.innerHTML = ''; return; }
+  document.getElementById('empty-state').classList.add('hidden');
+  list.innerHTML = accounts.map(cardHTML).join('');
+}
+
+function cardHTML(acc) {
+  const status = acc.status || { state: 'stopped' };
+  const state = status.state || 'stopped';
+  const running = isRunning(state);
+  const uptime = status.startedAt ? formatUptime(Date.now() - status.startedAt) : null;
+
+  return `
+  <div id="card-${acc.id}" class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap items-center gap-2 mb-0.5">
+        <span class="font-semibold">${esc(acc.label)}</span>
+        <span class="status-badge text-xs px-2 py-0.5 rounded-full font-medium ${STATE_COLOR[state]||STATE_COLOR.stopped}">${STATE_LABEL[state]||state}</span>
+        ${uptime ? `<span class="text-xs text-gray-600">${uptime}</span>` : ''}
+      </div>
+      <div class="text-sm text-gray-500">
+        ${acc.username ? esc(acc.username) : '<em class="text-gray-600">QR Code</em>'}
+        <span class="text-gray-700 ml-2">· App ${esc(acc.farm_game_ids||'730')}</span>
+        ${ME?.role === 'admin' && acc.owner_id ? `<span class="text-gray-700 ml-2">· UID ${acc.owner_id}</span>` : ''}
+      </div>
+      <div class="status-msg text-xs text-gray-600 mt-0.5 truncate min-h-[1rem]">${esc(status.message||'')}</div>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+      <button class="btn-start text-xs bg-green-800 hover:bg-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors ${running?'hidden':''}"
+        onclick="startAccount(${acc.id})">Iniciar</button>
+      <button class="btn-stop text-xs bg-red-900/80 hover:bg-red-800 px-3 py-1.5 rounded-lg font-medium transition-colors ${running?'':'hidden'}"
+        onclick="stopAccount(${acc.id})">Parar</button>
+      <button class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+        onclick="restartAccount(${acc.id})" title="Reiniciar">↺</button>
+      <button class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+        onclick="openLogs(${acc.id}, '${esc(acc.label)}')">Logs</button>
+      <button class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+        onclick="openEditModal(${acc.id})">Editar</button>
+      <button class="text-xs text-gray-600 hover:text-red-400 hover:bg-red-950/30 px-2 py-1.5 rounded-lg transition-colors"
+        onclick="confirmDeleteAccount(${acc.id})">✕</button>
+    </div>
+  </div>`;
+}
+
+function updateCard(id, status) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  const state = status.state || 'stopped';
+  const running = isRunning(state);
+  card.querySelector('.status-badge').className = `status-badge text-xs px-2 py-0.5 rounded-full font-medium ${STATE_COLOR[state]||STATE_COLOR.stopped}`;
+  card.querySelector('.status-badge').textContent = STATE_LABEL[state] || state;
+  card.querySelector('.status-msg').textContent = status.message || '';
+  card.querySelector('.btn-start').classList.toggle('hidden', running);
+  card.querySelector('.btn-stop').classList.toggle('hidden', !running);
+}
+
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h/24)}d ${h%24}h`;
+}
+
+async function startAccount(id) { await api('POST', `/api/accounts/${id}/start`); }
+async function stopAccount(id)  { await api('POST', `/api/accounts/${id}/stop`); }
+async function restartAccount(id) {
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.querySelector('.status-badge').textContent = 'Reiniciando...';
+  await api('POST', `/api/accounts/${id}/restart`);
+}
+async function confirmDeleteAccount(id) {
+  const acc = accounts.find(a => a.id === id);
+  if (!confirm(`Deletar "${acc?.label}"?`)) return;
+  await api('DELETE', `/api/accounts/${id}`);
+  accounts = accounts.filter(a => a.id !== id);
+  renderAccounts();
+}
+
+// ── Account Modal ─────────────────────────────────────────
+
+async function openAddModal() {
+  editingAccountId = null;
+  document.getElementById('modal-title').textContent = 'Adicionar Conta';
+  document.getElementById('account-form').reset();
+  document.getElementById('f-farm-games').value = '730';
+  if (ME.role === 'admin') {
+    document.getElementById('f-owner-wrap').classList.remove('hidden');
+    await populateOwnerSelect(null);
+  }
+  updateLoginFields();
+  document.getElementById('account-modal').classList.remove('hidden');
+}
+
+async function openEditModal(id) {
+  const acc = accounts.find(a => a.id === id);
+  if (!acc) return;
+  editingAccountId = id;
+  document.getElementById('modal-title').textContent = 'Editar Conta';
+  document.getElementById('f-label').value = acc.label || '';
+  document.getElementById('f-username').value = acc.username || '';
+  document.getElementById('f-password').value = '';
+  document.getElementById('f-shared-secret').value = '';
+  document.getElementById('f-identity-secret').value = '';
+  document.getElementById('f-farm-games').value = acc.farm_game_ids || '730';
+  document.getElementById('f-login-method').value = acc.login_method || 'credentials';
+  document.getElementById('f-enabled').checked = !!acc.enabled;
+  if (ME.role === 'admin') {
+    document.getElementById('f-owner-wrap').classList.remove('hidden');
+    await populateOwnerSelect(acc.owner_id);
+  }
+  updateLoginFields();
+  document.getElementById('account-modal').classList.remove('hidden');
+}
+
+async function populateOwnerSelect(selectedId) {
+  const sel = document.getElementById('f-owner-id');
+  sel.innerHTML = '<option value="">Sem dono (admin)</option>';
+  for (const u of users) {
+    const opt = document.createElement('option');
+    opt.value = u.id;
+    opt.textContent = `${u.username} (${u.role})`;
+    if (u.id === selectedId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function closeModal() { document.getElementById('account-modal').classList.add('hidden'); }
+function updateLoginFields() {
+  const qr = document.getElementById('f-login-method').value === 'qr';
+  document.getElementById('credential-fields').classList.toggle('hidden', qr);
+  document.getElementById('qr-info').classList.toggle('hidden', !qr);
+}
+
+document.getElementById('account-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    label:           document.getElementById('f-label').value.trim(),
+    username:        document.getElementById('f-username').value.trim(),
+    password:        document.getElementById('f-password').value,
+    shared_secret:   document.getElementById('f-shared-secret').value.trim(),
+    identity_secret: document.getElementById('f-identity-secret').value.trim(),
+    farm_game_ids:   document.getElementById('f-farm-games').value.trim() || '730',
+    login_method:    document.getElementById('f-login-method').value,
+    auto_confirm:    document.getElementById('f-auto-confirm').checked ? 1 : 0,
+    enabled:         document.getElementById('f-enabled').checked ? 1 : 0,
+  };
+  if (ME.role === 'admin') {
+    const v = document.getElementById('f-owner-id').value;
+    data.owner_id = v ? Number(v) : null;
+  }
+  try {
+    if (editingAccountId) {
+      await api('PUT', `/api/accounts/${editingAccountId}`, data);
+      const acc = accounts.find(a => a.id === editingAccountId);
+      if (acc) Object.assign(acc, data);
+      renderAccounts();
+    } else {
+      const res = await api('POST', '/api/accounts', data);
+      accounts.push({ id: res.id, ...data, status: { state: 'stopped' } });
+      renderAccounts();
+    }
+    closeModal();
+  } catch (err) { alert('Erro: ' + err.message); }
+});
+
+// ── QR Modal ─────────────────────────────────────────────
+
+function showQR(accountId, url) {
+  const container = document.getElementById('qr-canvas');
+  container.innerHTML = '';
+  try {
+    new QRCode(container, { text: url, width: 220, height: 220, colorDark: '#000', colorLight: '#fff' });
+  } catch (e) { container.textContent = url; }
+  document.getElementById('qr-hint').textContent = 'Aguardando scan...';
+  document.getElementById('qr-modal').classList.remove('hidden');
+}
+function closeQrModal() {
+  document.getElementById('qr-modal').classList.add('hidden');
+  document.getElementById('qr-canvas').innerHTML = '';
+}
+
+// ── 2FA Modal ─────────────────────────────────────────────
+
+function openTwoFAModal(id, label) {
+  twoFAAccountId = id;
+  document.getElementById('twofa-label').textContent = label || `Conta ${id}`;
+  document.getElementById('twofa-code').value = '';
+  document.getElementById('twofa-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('twofa-code').focus(), 100);
+}
+function closeTwoFAModal() { document.getElementById('twofa-modal').classList.add('hidden'); twoFAAccountId = null; }
+async function submit2FA() {
+  const code = document.getElementById('twofa-code').value.trim();
+  if (!code || !twoFAAccountId) return;
+  await api('POST', `/api/accounts/${twoFAAccountId}/2fa`, { code });
+  closeTwoFAModal();
+}
+
+// ── Logs Modal ────────────────────────────────────────────
+
+async function openLogs(id, label) {
+  logsAccountId = id;
+  document.getElementById('logs-account-label').textContent = label;
+  document.getElementById('logs-modal').classList.remove('hidden');
+  await refreshLogs();
+}
+async function refreshLogs() {
+  if (!logsAccountId) return;
+  const logs = await api('GET', `/api/accounts/${logsAccountId}/logs`);
+  const el = document.getElementById('logs-content');
+  if (!logs.length) { el.innerHTML = '<p class="text-gray-600">Sem logs recentes. Inicie a conta para ver os logs.</p>'; return; }
+  el.innerHTML = logs.map(l => `<div><span class="text-gray-600">${new Date(l.ts).toLocaleTimeString()}</span> ${esc(l.message)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+function appendLog(data) {
+  const el = document.getElementById('logs-content');
+  const atBottom = el.scrollHeight - el.clientHeight <= el.scrollTop + 20;
+  const wasEmpty = el.innerHTML.includes('Sem logs');
+  if (wasEmpty) el.innerHTML = '';
+  el.innerHTML += `<div><span class="text-gray-600">${new Date(data.ts||Date.now()).toLocaleTimeString()}</span> ${esc(data.message)}</div>`;
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+function closeLogsModal() { document.getElementById('logs-modal').classList.add('hidden'); logsAccountId = null; }
+
+// ── Users (admin) ─────────────────────────────────────────
+
+async function loadUsers() {
+  try { users = await api('GET', '/api/users'); renderUsers(); } catch (e) {}
+}
+function renderUsers() {
+  document.getElementById('users-list').innerHTML = users.map(u => `
+  <div class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
+    <div class="flex-1">
+      <span class="font-medium">${esc(u.username)}</span>
+      <span class="ml-2 text-xs px-1.5 py-0.5 rounded ${u.role==='admin'?'bg-yellow-900/60 text-yellow-300':'bg-gray-800 text-gray-400'}">${u.role}</span>
+    </div>
+    <div class="text-xs text-gray-600">${new Date(u.created_at).toLocaleDateString('pt-BR')}</div>
+    <button onclick="openEditUserModal(${u.id})" class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors">Editar</button>
+    <button onclick="confirmDeleteUser(${u.id})" class="text-xs text-gray-600 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">✕</button>
+  </div>`).join('');
+}
+
+function openAddUserModal() {
+  editingUserId = null;
+  document.getElementById('user-modal-title').textContent = 'Novo Usuário';
+  document.getElementById('user-form').reset();
+  document.getElementById('uf-pass-hint').textContent = '(obrigatória)';
+  document.getElementById('user-modal').classList.remove('hidden');
+}
+function openEditUserModal(id) {
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  editingUserId = id;
+  document.getElementById('user-modal-title').textContent = 'Editar Usuário';
+  document.getElementById('uf-username').value = u.username;
+  document.getElementById('uf-password').value = '';
+  document.getElementById('uf-role').value = u.role;
+  document.getElementById('uf-pass-hint').textContent = '(deixe em branco para não alterar)';
+  document.getElementById('user-modal').classList.remove('hidden');
+}
+function closeUserModal() { document.getElementById('user-modal').classList.add('hidden'); editingUserId = null; }
+
+document.getElementById('user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    username: document.getElementById('uf-username').value.trim(),
+    password: document.getElementById('uf-password').value,
+    role: document.getElementById('uf-role').value,
+  };
+  try {
+    if (editingUserId) {
+      await api('PUT', `/api/users/${editingUserId}`, data);
+      const u = users.find(x => x.id === editingUserId);
+      if (u) Object.assign(u, { username: data.username, role: data.role });
+    } else {
+      const res = await api('POST', '/api/users', data);
+      users.push({ id: res.id, username: data.username, role: data.role, created_at: new Date().toISOString() });
+    }
+    renderUsers();
+    closeUserModal();
+  } catch (err) { alert('Erro: ' + err.message); }
+});
+
+async function confirmDeleteUser(id) {
+  const u = users.find(x => x.id === id);
+  if (!confirm(`Deletar usuário "${u?.username}"?`)) return;
+  await api('DELETE', `/api/users/${id}`);
+  users = users.filter(x => x.id !== id);
+  renderUsers();
+}
+
+// ── API ───────────────────────────────────────────────────
+
+function authHeader() { return { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }; }
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: authHeader(),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { logout(); throw new Error('unauthorized'); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

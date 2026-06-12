@@ -1,0 +1,33 @@
+hiro@N040053:~/workspace/pessoal/steam-farm-hour$ npm start
+
+> steam-farm-manager@2.0.0 start /home/hiro/workspace/pessoal/steam-farm-hour
+> node src/server.js
+
+Steam Farm Manager rodando em http://localhost:3000
+Admin key configurada em config.json
+(node:35594) [steam-user] Warning: Logging into anonymous Steam account. If you didn't expect this warning, make sure that you're properly passing your log on details to the logOn() method. To suppress this warning, pass {anonymous: true} to logOn().
+(Use `node --trace-warnings ...` to show where the warning was created)
+[bot:1] Conectado!
+[bot:1] Farm iniciado: 730
+(node:35942) [steam-user] Warning: Logging into anonymous Steam account. If you didn't expect this warning, make sure that you're properly passing your log on details to the logOn() method. To suppress this warning, pass {anonymous: true} to logOn().
+(Use `node --trace-warnings ...` to show where the warning was created)
+[bot:2] Conectado!
+[bot:2] Farm iniciado: 730
+[bot:2] Parando...
+(node:36146) [steam-user] Warning: Logging into anonymous Steam account. If you didn't expect this warning, make sure that you're properly passing your log on details to the logOn() method. To suppress this warning, pass {anonymous: true} to logOn().
+(Use `node --trace-warnings ...` to show where the warning was created)
+[bot:2] Parando...
+(node:36189) [steam-user] Warning: Logging into anonymous Steam account. If you didn't expect this warning, make sure that you're properly passing your log on details to the logOn() method. To suppress this warning, pass {anonymous: true} to logOn().
+(Use `node --trace-warnings ...` to show where the warning was created)
+[bot:2] Conectado!
+[bot:2] Farm iniciado: 730
+[bot:3] Erro: InvalidPassword
+[bot:3] Reconnectando em 30s...
+[bot:3] Erro: InvalidPassword
+[bot:3] Reconnectando em 30s...
+[bot:3] Erro: InvalidPassword
+[bot:3] Reconnectando em 30s...
+[bot:3] Parando...
+[bot:2] Parando...
+[bot:1] Parando...
+^C

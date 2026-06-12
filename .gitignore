@@ -1,1 +1,5 @@
 node_modules/*
+data/*
+accounts.db
+cookies.json
+sentry.bin

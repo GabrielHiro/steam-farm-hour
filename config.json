@@ -1,4 +1,7 @@
 {
+  "admin_key": "Hiro",
+  "port": 3000,
+
   "username": "",
   "password": "",
   "shared_secret": "",

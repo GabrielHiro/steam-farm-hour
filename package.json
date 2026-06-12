@@ -1,7 +1,19 @@
 {
+  "name": "steam-farm-manager",
+  "version": "2.0.0",
+  "scripts": {
+    "start": "node src/server.js",
+    "bot": "node index.js"
+  },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^9.6.0",
+    "express": "^4.19.0",
+    "jsonwebtoken": "^9.0.3",
+    "steam-session": "*",
     "steam-totp": "^2.1.2",
     "steam-user": "^5.3.0",
-    "steamcommunity": "*"
+    "steamcommunity": "*",
+    "ws": "^8.17.0"
   }
 }
